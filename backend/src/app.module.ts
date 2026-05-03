@@ -5,6 +5,7 @@ import databaseConfig from './config/database.config';
 import { envValidationSchema } from './config/env.validation';
 import { PrismaModule } from './database/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { HealthModule } from './modules/health/health.module';
 import { MaterialsModule } from './modules/materials/materials.module';
 import { PermissionsModule } from './modules/permissions/permissions.module';
 import { ProductsModule } from './modules/products/products.module';
@@ -21,6 +22,7 @@ import { UsersModule } from './modules/users/users.module';
       validationSchema: envValidationSchema,
     }),
     PrismaModule,
+    HealthModule,
     TenantsModule,
     AuthModule,
     UsersModule,
