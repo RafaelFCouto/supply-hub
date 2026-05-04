@@ -1,11 +1,12 @@
-import { IsNotEmpty, IsString } from 'class-validator';
+import { IsIn, IsString } from 'class-validator';
+import { PERMISSION_ACTIONS, PERMISSION_RESOURCES, type PermissionAction, type PermissionResource } from '../constants/permission-options';
 
 export class CreatePermissionDto {
   @IsString()
-  @IsNotEmpty()
-  resource!: string;
+  @IsIn(PERMISSION_RESOURCES)
+  resource!: PermissionResource;
 
   @IsString()
-  @IsNotEmpty()
-  action!: string;
+  @IsIn(PERMISSION_ACTIONS)
+  action!: PermissionAction;
 }

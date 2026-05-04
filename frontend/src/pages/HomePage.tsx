@@ -41,6 +41,15 @@ export function HomePage() {
             <Link className="primary-link" to="/tenants">
               Open tenants
             </Link>
+            <Link className="ghost-link" to="/permissions">
+              Open permissions
+            </Link>
+            <Link className="ghost-link" to="/roles">
+              Open roles
+            </Link>
+            <Link className="ghost-link" to="/users">
+              Open users
+            </Link>
             <button className="ghost-button" onClick={logout} type="button">
               Sign out
             </button>
