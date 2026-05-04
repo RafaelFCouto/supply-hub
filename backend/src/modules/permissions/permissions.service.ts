@@ -3,6 +3,7 @@ import { Prisma, RoleStatus } from '@prisma/client';
 import { TenantsService } from '../tenants/tenants.service';
 import { CreatePermissionDto } from './dto/create-permission.dto';
 import { CreateRoleDto } from './dto/create-role.dto';
+import { UpdatePermissionDto } from './dto/update-permission.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 import { PermissionsRepository } from './permissions.repository';
 
@@ -122,6 +123,22 @@ export class PermissionsService {
     };
   }
 
+  async updatePermission(id: number, updatePermissionDto: UpdatePermissionDto): Promise<SuccessResponse<unknown>> {
+    await this.ensurePermissionExists(id);
+
+    try {
+      await this.permissionsRepository.updatePermission(id, updatePermissionDto);
+
+      return {
+        data: await this.permissionsRepository.findPermissionById(id),
+        message: 'Permission updated successfully',
+      };
+    } catch (error) {
+      this.handlePrismaError(error, 'permission');
+      throw error;
+    }
+  }
+
   async ensureRoleIdsBelongToTenant(tenantId: number, roleIds: number[]): Promise<void> {
     if (roleIds.length === 0) {
       return;
@@ -151,6 +168,14 @@ export class PermissionsService {
 
     if (!role) {
       throw new NotFoundException(`Role with id ${id} was not found`);
+    }
+  }
+
+  private async ensurePermissionExists(id: number): Promise<void> {
+    const permission = await this.permissionsRepository.findPermissionById(id);
+
+    if (!permission) {
+      throw new NotFoundException(`Permission with id ${id} was not found`);
     }
   }
 

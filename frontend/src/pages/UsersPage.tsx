@@ -12,7 +12,7 @@ import {
   type UserStatus,
 } from '../services/users';
 
-const initialForm: CreateUserPayload = {
+const initialCreateForm: CreateUserPayload = {
   name: '',
   email: '',
   password: '',
@@ -24,12 +24,14 @@ export function UsersPage() {
   const { logout, session } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
-  const [form, setForm] = useState<CreateUserPayload>(initialForm);
+  const [form, setForm] = useState<CreateUserPayload>(initialCreateForm);
+  const [editingUserId, setEditingUserId] = useState<number | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isPending, startTransition] = useTransition();
 
   const tenantId = session?.tenantId;
+  const editingUser = users.find((user) => user.id === editingUserId) ?? null;
 
   useEffect(() => {
     if (!tenantId) {
@@ -67,7 +69,24 @@ export function UsersPage() {
     }
   }
 
-  async function handleCreateUser(event: FormEvent<HTMLFormElement>) {
+  function startEditingUser(user: User) {
+    setEditingUserId(user.id);
+    setForm({
+      name: user.name,
+      email: user.email,
+      password: '',
+      status: user.status,
+      roleIds: user.userRoles.map(({ roleId }) => roleId),
+    });
+    setFeedback(null);
+  }
+
+  function cancelEditingUser() {
+    setEditingUserId(null);
+    setForm(initialCreateForm);
+  }
+
+  async function handleSubmitUser(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (!tenantId) {
@@ -75,19 +94,34 @@ export function UsersPage() {
     }
 
     try {
-      const response = await createUser(tenantId, {
-        ...form,
+      const payload = {
+        name: form.name,
         email: form.email.trim().toLowerCase(),
-      });
+        status: form.status,
+        roleIds: form.roleIds,
+        ...(editingUser
+          ? form.password.trim()
+            ? { password: form.password }
+            : {}
+          : { password: form.password }),
+      };
+
+      const response = editingUser
+        ? await updateUser(tenantId, editingUser.id, payload)
+        : await createUser(tenantId, payload as CreateUserPayload);
 
       startTransition(() => {
-        setUsers((currentUsers) => [response.data, ...currentUsers]);
-        setForm(initialForm);
+        setUsers((currentUsers) =>
+          editingUser
+            ? currentUsers.map((user) => (user.id === editingUser.id ? response.data : user))
+            : [response.data, ...currentUsers],
+        );
+        cancelEditingUser();
         setFeedback(response.message);
       });
     } catch (error) {
       startTransition(() => {
-        setFeedback(error instanceof Error ? error.message : 'Unable to create user');
+        setFeedback(error instanceof Error ? error.message : editingUser ? 'Unable to update user' : 'Unable to create user');
       });
     }
   }
@@ -102,6 +136,9 @@ export function UsersPage() {
 
       startTransition(() => {
         setUsers((currentUsers) => currentUsers.map((user) => (user.id === userId ? response.data : user)));
+        if (editingUserId === userId) {
+          setForm((currentForm) => ({ ...currentForm, status: response.data.status }));
+        }
         setFeedback(response.message);
       });
     } catch (error) {
@@ -121,6 +158,9 @@ export function UsersPage() {
 
       startTransition(() => {
         setUsers((currentUsers) => currentUsers.filter((user) => user.id !== userId));
+        if (editingUserId === userId) {
+          cancelEditingUser();
+        }
         setFeedback('User deactivated successfully');
       });
     } catch (error) {
@@ -175,11 +215,23 @@ export function UsersPage() {
       <section className="users-layout">
         <aside className="users-form-panel">
           <div className="users-form-panel__heading">
-            <h2>Create user</h2>
-            <p>Register tenant-specific operators and attach the roles that define their access boundaries.</p>
+            <div>
+              <h2>{editingUser ? 'Edit user' : 'Create user'}</h2>
+              <p>
+                {editingUser
+                  ? `Review identity and assigned roles for user #${editingUser.id}.`
+                  : 'Register tenant-specific operators and attach the roles that define their access boundaries.'}
+              </p>
+            </div>
+
+            {editingUser ? (
+              <button className="ghost-button" onClick={cancelEditingUser} type="button">
+                Cancel
+              </button>
+            ) : null}
           </div>
 
-          <form className="tenant-form" onSubmit={handleCreateUser}>
+          <form className="tenant-form" onSubmit={handleSubmitUser}>
             <label>
               <span>Name</span>
               <input
@@ -203,12 +255,12 @@ export function UsersPage() {
             </label>
 
             <label>
-              <span>Password</span>
+              <span>{editingUser ? 'New password' : 'Password'}</span>
               <input
                 minLength={8}
                 onChange={(event) => setForm((currentForm) => ({ ...currentForm, password: event.target.value }))}
-                placeholder="Minimum 8 characters"
-                required
+                placeholder={editingUser ? 'Leave blank to keep current password' : 'Minimum 8 characters'}
+                required={!editingUser}
                 type="password"
                 value={form.password}
               />
@@ -217,9 +269,7 @@ export function UsersPage() {
             <label>
               <span>Status</span>
               <select
-                onChange={(event) =>
-                  setForm((currentForm) => ({ ...currentForm, status: event.target.value as UserStatus }))
-                }
+                onChange={(event) => setForm((currentForm) => ({ ...currentForm, status: event.target.value as UserStatus }))}
                 value={form.status}
               >
                 <option value="ACTIVE">ACTIVE</option>
@@ -259,7 +309,7 @@ export function UsersPage() {
             </div>
 
             <button className="submit-button" disabled={isPending || !tenantId} type="submit">
-              {isPending ? 'Creating...' : 'Create user'}
+              {isPending ? 'Saving...' : editingUser ? 'Save changes' : 'Create user'}
             </button>
           </form>
 
@@ -284,7 +334,7 @@ export function UsersPage() {
           ) : (
             <div className="users-list">
               {users.map((user) => (
-                <article className="user-card" key={user.id}>
+                <article className={`user-card ${editingUserId === user.id ? 'user-card--editing' : ''}`} key={user.id}>
                   <div className="tenant-card__top">
                     <div>
                       <span className="tenant-card__id">User #{user.id}</span>
@@ -308,18 +358,13 @@ export function UsersPage() {
                   </div>
 
                   <div className="tenant-card__actions">
-                    <button
-                      className="tenant-action"
-                      onClick={() => void handleUpdateUserStatus(user.id, 'ACTIVE')}
-                      type="button"
-                    >
+                    <button className="tenant-action tenant-action--accent" onClick={() => startEditingUser(user)} type="button">
+                      Edit
+                    </button>
+                    <button className="tenant-action" onClick={() => void handleUpdateUserStatus(user.id, 'ACTIVE')} type="button">
                       Activate
                     </button>
-                    <button
-                      className="tenant-action"
-                      onClick={() => void handleUpdateUserStatus(user.id, 'SUSPENDED')}
-                      type="button"
-                    >
+                    <button className="tenant-action" onClick={() => void handleUpdateUserStatus(user.id, 'SUSPENDED')} type="button">
                       Suspend
                     </button>
                     <button

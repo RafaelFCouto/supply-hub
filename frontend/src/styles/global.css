@@ -703,6 +703,14 @@ input {
   padding: 1.15rem;
 }
 
+.tenant-card--editing,
+.permission-card--editing,
+.role-card--editing,
+.user-card--editing {
+  border-color: rgba(201, 93, 42, 0.26);
+  box-shadow: 0 0 0 4px rgba(201, 93, 42, 0.08);
+}
+
 .tenant-card__top {
   display: flex;
   align-items: start;
@@ -789,6 +797,11 @@ input {
   border: 1px solid rgba(31, 37, 41, 0.14);
   background: rgba(255, 250, 243, 0.8);
   cursor: pointer;
+}
+
+.tenant-action--accent {
+  border-color: rgba(201, 93, 42, 0.22);
+  color: var(--color-accent-strong);
 }
 
 .tenant-action--danger {
@@ -950,6 +963,12 @@ input {
   padding: 0.4rem 0.7rem;
   color: var(--color-panel);
   font-size: 0.88rem;
+}
+
+.permission-card__actions {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: 0.2rem;
 }
 
 .permission-chip {

@@ -3,6 +3,7 @@ import { RoleStatus } from '@prisma/client';
 import { PrismaService } from 'src/database/prisma.service';
 import { CreatePermissionDto } from './dto/create-permission.dto';
 import { CreateRoleDto } from './dto/create-role.dto';
+import { UpdatePermissionDto } from './dto/update-permission.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 
 @Injectable()
@@ -137,9 +138,34 @@ export class PermissionsRepository {
     });
   }
 
+  updatePermission(id: number, data: UpdatePermissionDto) {
+    return this.prismaService.permission.update({
+      where: {
+        id,
+      },
+      data,
+    });
+  }
+
+  deletePermission(id: number) {
+    return this.prismaService.permission.delete({
+      where: {
+        id,
+      },
+    });
+  }
+
   listPermissions() {
     return this.prismaService.permission.findMany({
       orderBy: [{ resource: 'asc' }, { action: 'asc' }],
+    });
+  }
+
+  findPermissionById(id: number) {
+    return this.prismaService.permission.findUnique({
+      where: {
+        id,
+      },
     });
   }
 
