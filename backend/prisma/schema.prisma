@@ -42,14 +42,13 @@ model User {
   tenantId     Int
   tenant       Tenant     @relation(fields: [tenantId], references: [id])
   name         String
-  email        String
+  email        String     @unique
   passwordHash String
   status       UserStatus @default(ACTIVE)
   userRoles    UserRole[]
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
-  @@unique([tenantId, email])
   @@index([tenantId])
 }
 

@@ -83,6 +83,21 @@ export class UsersRepository {
     });
   }
 
+  findByEmail(email: string) {
+    return this.prismaService.user.findFirst({
+      where: {
+        email,
+      },
+      include: {
+        userRoles: {
+          include: {
+            role: true,
+          },
+        },
+      },
+    });
+  }
+
   update(
     id: number,
     data: {
