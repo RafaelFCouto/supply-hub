@@ -13,6 +13,11 @@ export type CreatePermissionPayload = {
   action: PermissionAction;
 };
 
+export type UpdatePermissionPayload = {
+  resource?: PermissionResource;
+  action?: PermissionAction;
+};
+
 export type ApiMessageResponse<T> = {
   data: T;
   message: string;

@@ -5,12 +5,19 @@ import {
   PERMISSION_RESOURCES,
   createPermission,
   listPermissions,
+  updatePermission,
   type CreatePermissionPayload,
   type Permission,
+  type UpdatePermissionPayload,
 } from '../services/permissions';
 import { useAuth } from '../services/auth';
 
-const initialForm: CreatePermissionPayload = {
+const initialCreateForm: CreatePermissionPayload = {
+  resource: PERMISSION_RESOURCES[0],
+  action: PERMISSION_ACTIONS[0],
+};
+
+const initialEditForm: UpdatePermissionPayload = {
   resource: PERMISSION_RESOURCES[0],
   action: PERMISSION_ACTIONS[0],
 };
@@ -18,7 +25,9 @@ const initialForm: CreatePermissionPayload = {
 export function PermissionsPage() {
   const { logout, session } = useAuth();
   const [permissions, setPermissions] = useState<Permission[]>([]);
-  const [form, setForm] = useState<CreatePermissionPayload>(initialForm);
+  const [createForm, setCreateForm] = useState<CreatePermissionPayload>(initialCreateForm);
+  const [editForm, setEditForm] = useState<UpdatePermissionPayload>(initialEditForm);
+  const [editingPermissionId, setEditingPermissionId] = useState<number | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isPending, startTransition] = useTransition();
@@ -26,6 +35,8 @@ export function PermissionsPage() {
   useEffect(() => {
     void loadPermissions();
   }, []);
+
+  const editingPermission = permissions.find((permission) => permission.id === editingPermissionId) ?? null;
 
   const insights = useMemo(() => {
     const resources = new Set(permissions.map((permission) => permission.resource));
@@ -38,36 +49,71 @@ export function PermissionsPage() {
     };
   }, [permissions]);
 
-  const existingPermissionKeys = useMemo(
+  const createExistingKeys = useMemo(
     () => new Set(permissions.map((permission) => `${permission.resource}:${permission.action}`)),
     [permissions],
   );
 
-  const availableActions = useMemo(
+  const editExistingKeys = useMemo(
     () =>
-      PERMISSION_ACTIONS.filter((action) => !existingPermissionKeys.has(`${form.resource}:${action}`)),
-    [existingPermissionKeys, form.resource],
+      new Set(
+        permissions
+          .filter((permission) => permission.id !== editingPermissionId)
+          .map((permission) => `${permission.resource}:${permission.action}`),
+      ),
+    [editingPermissionId, permissions],
   );
 
-  const availableResources = useMemo(
+  const createAvailableActions = useMemo(
+    () => PERMISSION_ACTIONS.filter((action) => !createExistingKeys.has(`${createForm.resource}:${action}`)),
+    [createExistingKeys, createForm.resource],
+  );
+
+  const createAvailableResources = useMemo(
     () =>
       PERMISSION_RESOURCES.map((resource) => ({
         resource,
-        hasAvailableActions: PERMISSION_ACTIONS.some((action) => !existingPermissionKeys.has(`${resource}:${action}`)),
+        hasAvailableActions: PERMISSION_ACTIONS.some((action) => !createExistingKeys.has(`${resource}:${action}`)),
       })),
-    [existingPermissionKeys],
+    [createExistingKeys],
   );
 
-  const isCurrentCombinationTaken = existingPermissionKeys.has(`${form.resource}:${form.action}`);
+  const editAvailableActions = useMemo(() => {
+    const selectedResource = editForm.resource ?? PERMISSION_RESOURCES[0];
+    return PERMISSION_ACTIONS.filter((action) => !editExistingKeys.has(`${selectedResource}:${action}`));
+  }, [editExistingKeys, editForm.resource]);
+
+  const editAvailableResources = useMemo(
+    () =>
+      PERMISSION_RESOURCES.map((resource) => ({
+        resource,
+        hasAvailableActions: PERMISSION_ACTIONS.some((action) => !editExistingKeys.has(`${resource}:${action}`)),
+      })),
+    [editExistingKeys],
+  );
+
+  const isCreateCombinationTaken = createExistingKeys.has(`${createForm.resource}:${createForm.action}`);
+  const isEditCombinationTaken = editingPermission
+    ? editExistingKeys.has(`${editForm.resource}:${editForm.action}`)
+    : false;
 
   useEffect(() => {
-    if (availableActions.length > 0 && !availableActions.includes(form.action)) {
-      setForm((currentForm) => ({
+    if (createAvailableActions.length > 0 && !createAvailableActions.includes(createForm.action)) {
+      setCreateForm((currentForm) => ({
         ...currentForm,
-        action: availableActions[0],
+        action: createAvailableActions[0],
       }));
     }
-  }, [availableActions, form.action]);
+  }, [createAvailableActions, createForm.action]);
+
+  useEffect(() => {
+    if (editingPermission && editAvailableActions.length > 0 && !editAvailableActions.includes(editForm.action ?? PERMISSION_ACTIONS[0])) {
+      setEditForm((currentForm) => ({
+        ...currentForm,
+        action: editAvailableActions[0],
+      }));
+    }
+  }, [editAvailableActions, editForm.action, editingPermission]);
 
   async function loadPermissions() {
     setIsLoading(true);
@@ -83,25 +129,71 @@ export function PermissionsPage() {
     }
   }
 
+  function startEditingPermission(permission: Permission) {
+    setEditingPermissionId(permission.id);
+    setEditForm({
+      resource: permission.resource,
+      action: permission.action,
+    });
+    setFeedback(null);
+  }
+
+  function cancelEditingPermission() {
+    setEditingPermissionId(null);
+    setEditForm(initialEditForm);
+  }
+
   async function handleCreatePermission(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (isCurrentCombinationTaken) {
+    if (isCreateCombinationTaken) {
       setFeedback('This permission already exists');
       return;
     }
 
     try {
-      const response = await createPermission(form);
+      const response = await createPermission(createForm);
 
       startTransition(() => {
         setPermissions((currentPermissions) => [response.data, ...currentPermissions]);
-        setForm(initialForm);
+        setCreateForm(initialCreateForm);
         setFeedback(response.message);
       });
     } catch (error) {
       startTransition(() => {
         setFeedback(error instanceof Error ? error.message : 'Unable to create permission');
+      });
+    }
+  }
+
+  async function handleSavePermissionChanges(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!editingPermissionId || !editForm.resource || !editForm.action) {
+      return;
+    }
+
+    if (isEditCombinationTaken) {
+      setFeedback('This permission already exists');
+      return;
+    }
+
+    try {
+      const response = await updatePermission(editingPermissionId, {
+        resource: editForm.resource,
+        action: editForm.action,
+      });
+
+      startTransition(() => {
+        setPermissions((currentPermissions) =>
+          currentPermissions.map((permission) => (permission.id === editingPermissionId ? response.data : permission)),
+        );
+        cancelEditingPermission();
+        setFeedback(response.message);
+      });
+    } catch (error) {
+      startTransition(() => {
+        setFeedback(error instanceof Error ? error.message : 'Unable to update permission');
       });
     }
   }
@@ -174,7 +266,7 @@ export function PermissionsPage() {
           ) : (
             <div className="permissions-grid">
               {permissions.map((permission) => (
-                <article className="permission-card" key={permission.id}>
+                <article className={`permission-card ${editingPermissionId === permission.id ? 'permission-card--editing' : ''}`} key={permission.id}>
                   <div className="permission-card__top">
                     <span className="tenant-card__id">Permission #{permission.id}</span>
                     <span className="permission-chip">{permission.action}</span>
@@ -182,6 +274,12 @@ export function PermissionsPage() {
 
                   <strong>{permission.resource}</strong>
                   <code>{`${permission.resource}:${permission.action}`}</code>
+
+                  <div className="permission-card__actions">
+                    <button className="tenant-action tenant-action--accent" onClick={() => startEditingPermission(permission)} type="button">
+                      Edit
+                    </button>
+                  </div>
                 </article>
               ))}
             </div>
@@ -190,32 +288,59 @@ export function PermissionsPage() {
 
         <aside className="permissions-form-panel">
           <div className="permissions-form-panel__heading">
-            <h2>Create permission</h2>
-            <p>Keep permission names compact and explicit. Prefer stable resource and action pairs.</p>
+            <div>
+              <h2>{editingPermission ? 'Edit permission' : 'Create permission'}</h2>
+              <p>
+                {editingPermission
+                  ? `Adjust the capability pair for permission #${editingPermission.id}.`
+                  : 'Keep permission names compact and explicit. Prefer stable resource and action pairs.'}
+              </p>
+            </div>
+
+            {editingPermission ? (
+              <button className="ghost-button" onClick={cancelEditingPermission} type="button">
+                Cancel
+              </button>
+            ) : null}
           </div>
 
-          <form className="tenant-form" onSubmit={handleCreatePermission}>
+          <form className="tenant-form" onSubmit={editingPermission ? handleSavePermissionChanges : handleCreatePermission}>
             <label>
               <span>Resource</span>
               <select
-                onChange={(event) =>
-                  setForm((currentForm) => {
-                    const nextResource = event.target.value as CreatePermissionPayload['resource'];
+                onChange={(event) => {
+                  const nextResource = event.target.value as CreatePermissionPayload['resource'];
+
+                  if (editingPermission) {
                     const nextAvailableActions = PERMISSION_ACTIONS.filter(
-                      (action) => !existingPermissionKeys.has(`${nextResource}:${action}`),
+                      (action) => !editExistingKeys.has(`${nextResource}:${action}`),
                     );
 
-                    return {
+                    setEditForm({
                       resource: nextResource,
-                      action: nextAvailableActions[0] ?? currentForm.action,
-                    };
-                  })
-                }
-                value={form.resource}
+                      action: nextAvailableActions[0] ?? editForm.action,
+                    });
+                    return;
+                  }
+
+                  const nextAvailableActions = PERMISSION_ACTIONS.filter(
+                    (action) => !createExistingKeys.has(`${nextResource}:${action}`),
+                  );
+
+                  setCreateForm({
+                    resource: nextResource,
+                    action: nextAvailableActions[0] ?? createForm.action,
+                  });
+                }}
+                value={editingPermission ? editForm.resource : createForm.resource}
               >
                 {PERMISSION_RESOURCES.map((resource) => (
                   <option
-                    disabled={!availableResources.find((entry) => entry.resource === resource)?.hasAvailableActions}
+                    disabled={
+                      editingPermission
+                        ? !editAvailableResources.find((entry) => entry.resource === resource)?.hasAvailableActions
+                        : !createAvailableResources.find((entry) => entry.resource === resource)?.hasAvailableActions
+                    }
                     key={resource}
                     value={resource}
                   >
@@ -228,16 +353,24 @@ export function PermissionsPage() {
             <label>
               <span>Action</span>
               <select
-                disabled={availableActions.length === 0}
+                disabled={editingPermission ? editAvailableActions.length === 0 : createAvailableActions.length === 0}
                 onChange={(event) =>
-                  setForm((currentForm) => ({ ...currentForm, action: event.target.value as CreatePermissionPayload['action'] }))
+                  editingPermission
+                    ? setEditForm((currentForm) => ({
+                        ...currentForm,
+                        action: event.target.value as CreatePermissionPayload['action'],
+                      }))
+                    : setCreateForm((currentForm) => ({
+                        ...currentForm,
+                        action: event.target.value as CreatePermissionPayload['action'],
+                      }))
                 }
-                value={form.action}
+                value={editingPermission ? editForm.action : createForm.action}
               >
-                {availableActions.length === 0 ? (
-                  <option value={form.action}>No actions available</option>
+                {(editingPermission ? editAvailableActions : createAvailableActions).length === 0 ? (
+                  <option value={editingPermission ? editForm.action : createForm.action}>No actions available</option>
                 ) : (
-                  availableActions.map((action) => (
+                  (editingPermission ? editAvailableActions : createAvailableActions).map((action) => (
                     <option key={action} value={action}>
                       {action}
                     </option>
@@ -246,13 +379,16 @@ export function PermissionsPage() {
               </select>
             </label>
 
-            <button className="submit-button" disabled={isPending || availableActions.length === 0} type="submit">
-              {isPending ? 'Creating...' : 'Create permission'}
+            <button
+              className="submit-button"
+              disabled={isPending || (editingPermission ? editAvailableActions.length === 0 : createAvailableActions.length === 0)}
+              type="submit"
+            >
+              {isPending ? 'Saving...' : editingPermission ? 'Save changes' : 'Create permission'}
             </button>
           </form>
 
           <div className={`feedback ${feedback ? 'feedback--success' : ''}`}>{feedback ?? 'No recent action.'}</div>
-
         </aside>
       </section>
     </main>

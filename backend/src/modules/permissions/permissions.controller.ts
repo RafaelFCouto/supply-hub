@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post } from '@nestjs/common';
 import { CreatePermissionDto } from './dto/create-permission.dto';
 import { CreateRoleDto } from './dto/create-role.dto';
+import { UpdatePermissionDto } from './dto/update-permission.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 import { PermissionsService } from './permissions.service';
 
@@ -45,5 +46,10 @@ export class PermissionsController {
   @Get('permissions')
   listPermissions() {
     return this.permissionsService.listPermissions();
+  }
+
+  @Patch('permissions/:id')
+  updatePermission(@Param('id', ParseIntPipe) id: number, @Body() updatePermissionDto: UpdatePermissionDto) {
+    return this.permissionsService.updatePermission(id, updatePermissionDto);
   }
 }

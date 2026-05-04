@@ -12,7 +12,7 @@ import {
   type RoleStatus,
 } from '../services/roles';
 
-const initialForm: CreateRolePayload = {
+const initialCreateForm: CreateRolePayload = {
   name: '',
   description: '',
   status: 'ACTIVE',
@@ -23,12 +23,14 @@ export function RolesPage() {
   const { logout, session } = useAuth();
   const [roles, setRoles] = useState<Role[]>([]);
   const [permissions, setPermissions] = useState<Permission[]>([]);
-  const [form, setForm] = useState<CreateRolePayload>(initialForm);
+  const [form, setForm] = useState<CreateRolePayload>(initialCreateForm);
+  const [editingRoleId, setEditingRoleId] = useState<number | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isPending, startTransition] = useTransition();
 
   const tenantId = session?.tenantId;
+  const editingRole = roles.find((role) => role.id === editingRoleId) ?? null;
 
   useEffect(() => {
     if (!tenantId) {
@@ -70,7 +72,23 @@ export function RolesPage() {
     }
   }
 
-  async function handleCreateRole(event: FormEvent<HTMLFormElement>) {
+  function startEditingRole(role: Role) {
+    setEditingRoleId(role.id);
+    setForm({
+      name: role.name,
+      description: role.description ?? '',
+      status: role.status,
+      permissionIds: role.rolePermissions.map(({ permissionId }) => permissionId),
+    });
+    setFeedback(null);
+  }
+
+  function cancelEditingRole() {
+    setEditingRoleId(null);
+    setForm(initialCreateForm);
+  }
+
+  async function handleSubmitRole(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (!tenantId) {
@@ -78,19 +96,27 @@ export function RolesPage() {
     }
 
     try {
-      const response = await createRole(tenantId, {
+      const payload = {
         ...form,
         description: form.description?.trim() ? form.description.trim() : undefined,
-      });
+      };
+
+      const response = editingRole
+        ? await updateRole(tenantId, editingRole.id, payload)
+        : await createRole(tenantId, payload);
 
       startTransition(() => {
-        setRoles((currentRoles) => [response.data, ...currentRoles]);
-        setForm(initialForm);
+        setRoles((currentRoles) =>
+          editingRole
+            ? currentRoles.map((role) => (role.id === editingRole.id ? response.data : role))
+            : [response.data, ...currentRoles],
+        );
+        cancelEditingRole();
         setFeedback(response.message);
       });
     } catch (error) {
       startTransition(() => {
-        setFeedback(error instanceof Error ? error.message : 'Unable to create role');
+        setFeedback(error instanceof Error ? error.message : editingRole ? 'Unable to update role' : 'Unable to create role');
       });
     }
   }
@@ -105,6 +131,14 @@ export function RolesPage() {
 
       startTransition(() => {
         setRoles((currentRoles) => currentRoles.map((role) => (role.id === roleId ? response.data : role)));
+        if (editingRoleId === roleId) {
+          setForm({
+            name: response.data.name,
+            description: response.data.description ?? '',
+            status: response.data.status,
+            permissionIds: response.data.rolePermissions.map(({ permissionId }) => permissionId),
+          });
+        }
         setFeedback(response.message);
       });
     } catch (error) {
@@ -124,6 +158,9 @@ export function RolesPage() {
 
       startTransition(() => {
         setRoles((currentRoles) => currentRoles.filter((role) => role.id !== roleId));
+        if (editingRoleId === roleId) {
+          cancelEditingRole();
+        }
         setFeedback('Role deactivated successfully');
       });
     } catch (error) {
@@ -178,11 +215,23 @@ export function RolesPage() {
       <section className="roles-layout">
         <aside className="roles-form-panel">
           <div className="roles-form-panel__heading">
-            <h2>Create role</h2>
-            <p>Compose reusable access bundles for the authenticated tenant without leaking access rules into the UI.</p>
+            <div>
+              <h2>{editingRole ? 'Edit role' : 'Create role'}</h2>
+              <p>
+                {editingRole
+                  ? `Adjust the access bundle for role #${editingRole.id}.`
+                  : 'Compose reusable access bundles for the authenticated tenant without leaking access rules into the UI.'}
+              </p>
+            </div>
+
+            {editingRole ? (
+              <button className="ghost-button" onClick={cancelEditingRole} type="button">
+                Cancel
+              </button>
+            ) : null}
           </div>
 
-          <form className="tenant-form" onSubmit={handleCreateRole}>
+          <form className="tenant-form" onSubmit={handleSubmitRole}>
             <label>
               <span>Name</span>
               <input
@@ -207,9 +256,7 @@ export function RolesPage() {
             <label>
               <span>Status</span>
               <select
-                onChange={(event) =>
-                  setForm((currentForm) => ({ ...currentForm, status: event.target.value as RoleStatus }))
-                }
+                onChange={(event) => setForm((currentForm) => ({ ...currentForm, status: event.target.value as RoleStatus }))}
                 value={form.status}
               >
                 <option value="ACTIVE">ACTIVE</option>
@@ -247,7 +294,7 @@ export function RolesPage() {
             </div>
 
             <button className="submit-button" disabled={isPending || !tenantId} type="submit">
-              {isPending ? 'Creating...' : 'Create role'}
+              {isPending ? 'Saving...' : editingRole ? 'Save changes' : 'Create role'}
             </button>
           </form>
 
@@ -272,7 +319,7 @@ export function RolesPage() {
           ) : (
             <div className="roles-list">
               {roles.map((role) => (
-                <article className="role-card" key={role.id}>
+                <article className={`role-card ${editingRoleId === role.id ? 'role-card--editing' : ''}`} key={role.id}>
                   <div className="tenant-card__top">
                     <div>
                       <span className="tenant-card__id">Role #{role.id}</span>
@@ -298,18 +345,13 @@ export function RolesPage() {
                   </div>
 
                   <div className="tenant-card__actions">
-                    <button
-                      className="tenant-action"
-                      onClick={() => void handleUpdateRoleStatus(role.id, 'ACTIVE')}
-                      type="button"
-                    >
+                    <button className="tenant-action tenant-action--accent" onClick={() => startEditingRole(role)} type="button">
+                      Edit
+                    </button>
+                    <button className="tenant-action" onClick={() => void handleUpdateRoleStatus(role.id, 'ACTIVE')} type="button">
                       Activate
                     </button>
-                    <button
-                      className="tenant-action"
-                      onClick={() => void handleUpdateRoleStatus(role.id, 'SUSPENDED')}
-                      type="button"
-                    >
+                    <button className="tenant-action" onClick={() => void handleUpdateRoleStatus(role.id, 'SUSPENDED')} type="button">
                       Suspend
                     </button>
                     <button
